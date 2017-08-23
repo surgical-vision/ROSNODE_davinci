@@ -8,6 +8,10 @@
 #include <cv_bridge/cv_bridge.h>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/opencv.hpp>
+#include <PAWSS/Config.h>
+#include <PAWSS/Rect.h>
+#include <PAWSS/mUtils.h>
+#include <PAWSS/Tracker.h>
 
 
 // For the initial selection of the bounding box
@@ -132,6 +136,19 @@ int main(int argc, char **argv)
     ros::Rate loop_rate(30);
     geometry_msgs::Point left_point_msg, right_point_msg;
 
+    // PAWSS tracker configuration
+    std::string config_path = "../../config.txt";
+    // read config file
+    Config confL(configPath);
+    Config confR(config_path);
+    // check config file
+    if(!conf.check())
+        return EXIT_FAILURE;
+    float scaleW = 0.3;
+    float scaleH = scaleW;
+    cv::Mat scale_left_image, scale_right_image;
+    FloatRect sRectL, sRectR;
+
     // Checking effective image acquisition
     // Left camera
     while(true){
@@ -149,8 +166,6 @@ int main(int argc, char **argv)
         }
         loop_rate.sleep();
     }
-
-    // Initialise trackers
 
     ros::spinOnce();
 
@@ -203,6 +218,20 @@ int main(int argc, char **argv)
     }
     destroyWindow("imageRIGHT");
 
+    // scale the image and rectangle for PAWSS tracker
+    sRectL = FloatRect((float)rectL.x*scaleW, (float)rectL.y*scaleH, (float)rectL.width*scaleW, (float)rectL.height*scaleH);
+    sRectR = FloatRect((float)rectR.x*scaleW, (float)rectR.y*scaleH, (float)rectR.width*scaleW, (float)rectR.height*scaleH);
+    cv:resize(left_image, scale_left_image, cv::Size(std::round(left_image.cols*scaleW), std::round(left_image.rows*scaleH)));
+    cv::resize(right_image, scale_right_image, cv::Size(std::round(right_image.cols*scaleW), std::round(right_image.rows*scaleH)));
+    confL.mSearchRadius = std::round((sRectL.Width() + sRectL.Height())/4);
+    confR.mSearchRadius = std::round((sRectR.Width() + sRectR.Height())/4);
+
+    // declare and initialize the tracker
+    Tracker trackerL(confL);
+    trackerL.Initialise(scale_left_image, sRectL);
+    Tracker trackerR(confR);
+    trackerR.Initialise(scale_right_image, sRectR);
+    cv::Rect2f boundRectL, boundRectR;
 
     // Entering the loop
     while (ros::ok())
@@ -213,8 +242,18 @@ int main(int argc, char **argv)
 //        // Parse mat files into tracker
 //        // right_image, left_image, rectL, rectR
 //        // Xiaofei PART ??
-        cv::Rect2i boundRectL, boundRectR;
 
+        // scale the image
+        cv:resize(left_image, scale_left_image, cv::Size(std::round(left_image.cols*scaleW), std::round(left_image.rows*scaleH)));
+        cv::resize(right_image, scale_right_image, cv::Size(std::round(right_image.cols*scaleW), std::round(right_image.rows*scaleH)));
+        // track
+        trackerL.Track(scale_left_image);
+        trackerR.Track(scale_right_image);
+        // scale back the rectangle
+        const FloatRect& sBbL = trackerL.getBB();
+        const FloatRect& sBbR = trackerR.getBB();
+        boundRectL = cv::Rect2f(sBbL.XMin()/scaleW, sBbL.YMin()/scaleH, sBbL.Width()/scaleW, sBbL.Height()/scaleH);
+        boundRectR = cv::Rect2f(sBbR.XMin()/scaleW, sBbR.YMin()/scaleH, sBbR.Width()/scaleW, sBbR.Height()/scaleH);
 
         // Get tracker points: from the detected bounding box, defining the centroids
         //Bounding Box Centroid
