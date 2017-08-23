@@ -9,20 +9,16 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/opencv.hpp>
 
-static const std::string OPENCV_WINDOW = "Image window";
-cv::Mat right_image;
-cv::Mat left_image;
 
 // For the initial selection of the bounding box
 using namespace cv;
 using namespace std;
-Point point1, point2; /* vertical points of the bounding box */
+cv::Mat right_image, left_image;
+cv::Point point1, point2; /* vertical points of the bounding box */
 int drag = 0;
-Rect rectL; /* bounding box */
-Rect rectR;
-Rect rect;
+cv::Rect rectL, rectR, rect; /* bounding box */
 
-Mat img, roiImg; /* roiImg - the part of the image in the bounding box */
+cv::Mat img; //roiImg; /* roiImg - the part of the image in the bounding box */
 int select_flag = 0;
 
 // Callback function for dragging the bounding box
@@ -41,7 +37,7 @@ void mouseHandler(int event, int x, int y, int flags, void* param)
         Mat img1 = img.clone();
         point2 = Point(x, y);
         rectangle(img1, point1, point2, CV_RGB(255, 0, 0), 3, 8, 0);
-        imshow("image", img1);
+        //imshow("image", img1);
     }
 
     if (event == CV_EVENT_LBUTTONUP && drag)
@@ -49,7 +45,7 @@ void mouseHandler(int event, int x, int y, int flags, void* param)
         point2 = Point(x, y);
         rect = Rect(point1.x,point1.y,x-point1.x,y-point1.y);
         drag = 0;
-        roiImg = img(rect);
+//        roiImg = img(rect);
     }
 
     if (event == CV_EVENT_LBUTTONUP)
@@ -60,13 +56,21 @@ void mouseHandler(int event, int x, int y, int flags, void* param)
     }
 }
 
+// Callback function of the subscribers
 void imageCallbackL(const sensor_msgs::ImageConstPtr& msg)
 {
+//    cout << "<3" << endl;
+//
+//    sleep(4);
     cv_bridge::CvImagePtr cv_ptrL;
     try
     {
         cv_ptrL = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
         left_image = cv_ptrL->image;
+        //cout << "left image callback" << endl;
+        //imshow("TESTLEFT",left_image);
+        waitKey(1);
+
     }
     catch (cv_bridge::Exception& e)
     {
@@ -82,6 +86,7 @@ void imageCallbackR(const sensor_msgs::ImageConstPtr& msg)
     {
         cv_ptrR = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
         right_image = cv_ptrR->image;
+        waitKey(1);
     }
     catch (cv_bridge::Exception& e)
     {
@@ -92,6 +97,7 @@ void imageCallbackR(const sensor_msgs::ImageConstPtr& msg)
 }
 
 
+
 int main(int argc, char **argv)
 {
     // Start up ros node
@@ -99,6 +105,8 @@ int main(int argc, char **argv)
     ros::NodeHandle node_handle;
 
     // Get ROS params
+    ros::Duration(2).sleep();
+
     std::string camera_left_topic;
     node_handle.param<std::string>("left_camera_topic", camera_left_topic, "image_output/left");
     std::string camera_right_topic;
@@ -113,78 +121,99 @@ int main(int argc, char **argv)
     cv::Point centreL;
     cv::Point centreR;
 
-
     // Set up publishers and subscribers
     ros::Publisher needleL_pub = node_handle.advertise<geometry_msgs::Point>(position_left_topic, 1000);
     ros::Publisher needleR_pub = node_handle.advertise<geometry_msgs::Point>(position_right_topic, 1000);
     image_transport::ImageTransport it(node_handle);
-    image_transport::Subscriber subL = it.subscribe(camera_left_topic, 1, imageCallbackL);
-    image_transport::Subscriber subR = it.subscribe(camera_right_topic, 1, imageCallbackR);
+    image_transport::Subscriber subL = it.subscribe(camera_left_topic, 100, imageCallbackL);
+    image_transport::Subscriber subR = it.subscribe(camera_right_topic, 100, imageCallbackR);
 
     // Start the loop
-    ros::Rate loop_rate(20);
+    ros::Rate loop_rate(30);
     geometry_msgs::Point left_point_msg, right_point_msg;
 
-    // Initialise trackers
-    ros::spinOnce();
+    // Checking effective image acquisition
+    // Left camera
+    while(true){
+        ros::spinOnce();
+        if(0 != left_image.rows && 0 != left_image.cols){
+            break;
+        }
+        loop_rate.sleep();
+    }
+    // Right camera
+    while(true){
+        ros::spinOnce();
+        if(0 != right_image.rows && 0 != right_image.cols){
+            break;
+        }
+        loop_rate.sleep();
+    }
 
-    // Open up gui to select initial point-> i have to find a way of opening a gui for selecting the first roi
-    cv::imshow(OPENCV_WINDOW, left_image);
-    cv::imshow(OPENCV_WINDOW, right_image);
+    // Initialise trackers
+
+    ros::spinOnce();
 
     // Selecting for the LEFT camera
     int k;
     //VideoCapture cap = VideoCapture(0); /* Start webcam */
     //cap >> img; /* get image(Mat) */
-    imshow("image", left_image);
+    imshow("imageLEFT", left_image);
+    waitKey(1);
     while(1)
     {
         // cap >> img;
-        cvSetMouseCallback("image", mouseHandler, NULL);
-        if (select_flag == 1)
-        {
-            imshow("ROI", roiImg); /* show the image bounded by the box */
-        }
+        cvSetMouseCallback("imageLEFT", mouseHandler, NULL);
+//        if (select_flag == 1)
+//        {
+//            imshow("ROI", roiImg); /* show the image bounded by the box */
+//            waitKey(1);
+//        }
         rectangle(left_image, rect, CV_RGB(255, 0, 0), 3, 8, 0);
         rectL = rect;
-        imshow("image", left_image);
+        //imshow("image", left_image);
         k = waitKey(10);
         if (k == 27)
         {
+            cout << "rectL: " << rectL << endl;
             break;
         }
     }
+    destroyWindow("imageLEFT");
 
     // Selecting for the RIGHT camera
-    imshow("image", right_image);
+    imshow("imageRIGHT", right_image);
     while(1)
     {
         // cap >> img;
-        cvSetMouseCallback("image", mouseHandler, NULL);
-        if (select_flag == 1)
-        {
-            imshow("ROI", roiImg); /* show the image bounded by the box */
-        }
+        cvSetMouseCallback("imageRIGHT", mouseHandler, NULL);
+//        if (select_flag == 1)
+//        {
+//            imshow("ROI", roiImg); /* show the image bounded by the box */
+//        }
         rectangle(right_image, rectR, CV_RGB(255, 0, 0), 3, 8, 0);
         rectR = rect;
-        imshow("image", right_image);
+//        imshow("image", right_image);
         k = waitKey(10);
         if (k == 27)
         {
+            cout << "rectR: " << rectR << endl;
             break;
         }
     }
+    destroyWindow("imageRIGHT");
 
 
+    // Entering the loop
     while (ros::ok())
     {
         // Current image is got from the subscriber (no locks)
         ros::spinOnce();
 
-        // Parse mat files into tracker
-        // right_image, left_image, rectL, rectR
-        // Xiaofei PART ??
-
+//        // Parse mat files into tracker
+//        // right_image, left_image, rectL, rectR
+//        // Xiaofei PART ??
+        cv::Rect2i boundRectL, boundRectR;
 
 
         // Get tracker points: from the detected bounding box, defining the centroids
@@ -208,7 +237,7 @@ int main(int argc, char **argv)
         needleL_pub.publish(left_point_msg);
         needleR_pub.publish(right_point_msg);
 
-
+//        waitKey();
         loop_rate.sleep();
     }
 
